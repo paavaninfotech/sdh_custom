@@ -7,7 +7,7 @@ description = "Shayma Dairy Customization"
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
-dependencies = [
+dependencies = ["pandas~=2.2.1",
     # "frappe~=15.0.0" # Installed and managed by bench.
 ]
 
