@@ -8,6 +8,7 @@
   "delivery_date",
   "column_break_dqvl",
   "shift",
+  "is_return",
   "section_break_fdvo",
   "upload_file"
  ],
@@ -35,12 +36,18 @@
    "fieldname": "upload_file",
    "fieldtype": "Attach",
    "label": "Upload File"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_return",
+   "fieldtype": "Check",
+   "label": "Is Return"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-08 22:16:40.727811",
+ "modified": "2026-08-09 09:44:53.897450",
  "modified_by": "Administrator",
  "module": "Shayma Dairy Customization",
  "name": "Bulk Delivery Note Upload",

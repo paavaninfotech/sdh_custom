@@ -21,20 +21,21 @@ def generate_delivery_notes(docname):
     file_path = get_file_path(doc.upload_file)
     
     try:
-        # Read the Excel file. 
-        # Assuming the first column is 'Customer' and the rest are Item Codes
+        # Read the Excel file
         df = pd.read_excel(file_path)
     except Exception as e:
         frappe.throw(f"Error reading the Excel file: {str(e)}")
 
     # Extract item codes (all columns except the first one)
     item_columns = df.columns[1:]
-    
     created_notes = []
+    
+    # Check if this upload is flagged as a return
+    is_return = doc.get("is_return", 0)
 
     # Iterate over each row (Customer)
     for index, row in df.iterrows():
-        customer = row[df.columns[0]] # Grabs the customer name/ID from the first column
+        customer = row[df.columns[0]]
         
         if pd.isna(customer):
             continue # Skip empty rows
@@ -43,31 +44,39 @@ def generate_delivery_notes(docname):
         dn = frappe.new_doc("Delivery Note")
         dn.customer = customer
         dn.posting_date = doc.delivery_date
-        # Assuming you have a custom field for shift on the Delivery Note
         dn.custom_shift = doc.shift 
+        
+        # If it's a return, flag the Delivery Note as a return
+        if is_return:
+            dn.is_return = 1
         
         has_items = False
 
         # Iterate over the item columns to populate the items table
         for item_code in item_columns:
-            qty = row[item_code]
+            raw_qty = row[item_code]
             
-            # Only add the item if the quantity is greater than 0
-            if pd.notna(qty) and float(qty) > 0:
+            # Only process if the cell has a valid number greater than 0
+            if pd.notna(raw_qty) and float(raw_qty) > 0:
+                
+                # If is_return is checked, convert the positive Excel qty to negative
+                final_qty = float(raw_qty) * -1 if is_return else float(raw_qty)
+                
                 dn.append("items", {
                     "item_code": item_code,
-                    "qty": float(qty)
+                    "qty": final_qty
                 })
                 has_items = True
         
         # Only save if there is at least one item with a quantity
         if has_items:
             dn.insert()
-            # Uncomment the next line if you want it to auto-submit
-            # dn.submit() 
+            # dn.submit() # Uncomment if you want auto-submission
             created_notes.append(dn.name)
 
     if created_notes:
-        frappe.msgprint(f"Successfully created {len(created_notes)} Delivery Notes.")
+        # Dynamic success message based on the document type created
+        doc_type_name = "Return Delivery Notes" if is_return else "Delivery Notes"
+        frappe.msgprint(f"Successfully created {len(created_notes)} {doc_type_name}.")
     else:
-        frappe.msgprint("No Delivery Notes were created. Please check the quantities in your file.")
+        frappe.msgprint("No records were created. Please check the quantities in your file.")

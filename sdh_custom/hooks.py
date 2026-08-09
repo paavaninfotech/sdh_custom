@@ -137,6 +137,12 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
+doc_events = {
+    "Delivery Note": {
+        "validate": "sdh_custom.overrides.delivery_note.custom_delivery_note_validate"
+    }
+}
+
 # doc_events = {
 # 	"*": {
 # 		"on_update": "method",
