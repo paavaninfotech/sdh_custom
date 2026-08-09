@@ -7,7 +7,7 @@ import pandas as pd
 from frappe.utils.file_manager import get_file_path
 
 class BulkDeliveryNoteUpload(Document):
-	pass
+    pass
 
 def get_item_details(item_code):
     """
@@ -70,10 +70,13 @@ def generate_delivery_notes(docname):
         if is_return:
             se = frappe.new_doc("Stock Entry")
             se.stock_entry_type = "Material Receipt"
+            
+            # --- DATE FIX START ---
             se.posting_date = doc.delivery_date
+            se.set_posting_time = 1 # Forces ERPNext to respect the date above
+            # --- DATE FIX END ---
             
             # Stamping the Customer onto the Stock Entry for ledger tracking
-            # Note: Ensure 'custom_customer' field exists on the Stock Entry Doctype
             se.custom_customer = str(customer).strip() 
 
             for raw_item_code in item_columns:
@@ -114,7 +117,11 @@ def generate_delivery_notes(docname):
         else:
             dn = frappe.new_doc("Delivery Note")
             dn.customer = str(customer).strip()
+            
+            # --- DATE FIX START ---
             dn.posting_date = doc.delivery_date
+            dn.set_posting_time = 1 # Forces ERPNext to respect the date above
+            # --- DATE FIX END ---
             
             # Safely apply custom shift if provided
             if doc.get("shift"): 
