@@ -40,7 +40,17 @@ def generate_delivery_notes(docname):
         if pd.isna(customer):
             continue # Skip empty rows
 
-        items_list = []
+        # Initialize a new Delivery Note
+        dn = frappe.new_doc("Delivery Note")
+        dn.customer = customer
+        dn.posting_date = doc.delivery_date
+        dn.custom_shift = doc.shift 
+        
+        # If it's a return, flag the Delivery Note as a return
+        if is_return:
+            dn.is_return = 1
+        
+        has_items = False
 
         # Iterate over the item columns to populate the items table
         for item_code in item_columns:
@@ -48,28 +58,24 @@ def generate_delivery_notes(docname):
             
             # Only process if the cell has a valid number greater than 0
             if pd.notna(raw_qty) and float(raw_qty) > 0:
-                # Keep quantity POSITIVE even for returns (ERPNext handles return logic via is_return=1)
-                items_list.append({
+                
+                # If is_return is checked, convert the positive Excel qty to negative
+                final_qty = float(raw_qty) * -1 if is_return else float(raw_qty)
+                
+                dn.append("items", {
                     "item_code": item_code,
-                    "qty": float(raw_qty)
+                    "qty": final_qty
                 })
+                has_items = True
         
         # Only save if there is at least one item with a quantity
-        if items_list:
-            dn = frappe.get_doc({
-                "doctype": "Delivery Note",
-                "customer": customer,
-                "posting_date": doc.delivery_date,
-                "custom_shift": doc.shift,
-                "is_return": 1 if is_return else 0,
-                "items": items_list
-            })
-            
+        if has_items:
             dn.insert()
             # dn.submit() # Uncomment if you want auto-submission
             created_notes.append(dn.name)
 
     if created_notes:
+        # Dynamic success message based on the document type created
         doc_type_name = "Return Delivery Notes" if is_return else "Delivery Notes"
         frappe.msgprint(f"Successfully created {len(created_notes)} {doc_type_name}.")
     else:
