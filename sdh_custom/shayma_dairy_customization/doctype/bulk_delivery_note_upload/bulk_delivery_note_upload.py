@@ -73,6 +73,7 @@ def generate_delivery_notes(docname):
             
             # --- DATE FIX START ---
             se.posting_date = doc.delivery_date
+            se.custom_shift = doc.shift if doc.get("shift") else None
             se.set_posting_time = 1 # Forces ERPNext to respect the date above
             # --- DATE FIX END ---
             
