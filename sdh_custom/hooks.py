@@ -139,7 +139,7 @@ app_license = "mit"
 
 doc_events = {
     "Delivery Note": {
-        "validate": "sdh_custom.sdh_custom.overrides.delivery_note.custom_delivery_note_validate"
+        "validate": "sdh_custom.overrides.delivery_note.CustomDeliveryNote"
     }
 }
 
