@@ -136,9 +136,9 @@ app_license = "mit"
 # Document Events
 # ---------------
 # Hook on document methods and events
-override_doctype_class = {
-    "Delivery Note": "sdh_custom.overrides.delivery_note.CustomDeliveryNote"
-}
+#override_doctype_class = {
+#    "Delivery Note": "sdh_custom.overrides.delivery_note.CustomDeliveryNote"
+#}
 
 # doc_events = {
 # 	"*": {
