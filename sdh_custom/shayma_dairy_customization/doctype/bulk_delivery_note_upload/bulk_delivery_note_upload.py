@@ -14,8 +14,21 @@ def get_item_details(item_code):
     Helper function to manually fetch mandatory item details 
     so we don't rely on Frappe's problematic set_missing_values()
     """
-    return frappe.db.get_value("Item", item_code, 
-                               ["stock_uom", "item_name", "default_warehouse"], as_dict=True)
+    # 1. Fetch the fields that actually exist on the main Item table
+    item = frappe.db.get_value("Item", item_code, 
+                               ["stock_uom", "item_name"], as_dict=True)
+    
+    if not item:
+        return None
+
+    # 2. Fetch the default warehouse from the 'Item Default' child table
+    # This grabs the first default warehouse configured for this item
+    default_warehouse = frappe.db.get_value("Item Default", {"parent": item_code}, "default_warehouse")
+    
+    # 3. Attach it to our item dictionary so the rest of the script works
+    item["default_warehouse"] = default_warehouse
+    
+    return item
 
 @frappe.whitelist()
 def generate_delivery_notes(docname):
