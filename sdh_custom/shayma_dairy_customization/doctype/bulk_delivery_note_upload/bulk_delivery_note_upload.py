@@ -1,6 +1,13 @@
+# Copyright (c) 2026, Paavan Infotech and contributors
+# For license information, please see license.txt
+
 import frappe
+from frappe.model.document import Document
 import pandas as pd
 from frappe.utils.file_manager import get_file_path
+
+class BulkDeliveryNoteUpload(Document):
+	pass
 
 def get_item_details(item_code):
     """
