@@ -6,31 +6,33 @@ class CustomDeliveryNote(DeliveryNote):
     
     @property
     def is_standalone_zero_return(self):
-        # Catch empty strings, None objects, and the literal string "None"
         return self.is_return and (not self.return_against or str(self.return_against).strip() in ["", "None"])
 
     def clean_standalone_references(self):
-        # Forcefully wipe bad references so core logic (if self.return_against:) evaluates to False
         if self.is_standalone_zero_return:
-            self.return_against = None
+            # CRITICAL: Use empty string "", NEVER Python None. 
+            # This prevents Frappe from casting it to the string "None"
+            self.return_against = ""
+            
             for item in self.get("items"):
-                item.dn_detail = None
-                item.against_sales_order = None
-                item.against_sales_invoice = None
+                item.dn_detail = ""
+                item.against_sales_order = ""
+                item.against_sales_invoice = ""
+                item.serial_no = ""
+                item.batch_no = ""
 
     def validate(self):
         self.clean_standalone_references()
         super().validate()
 
     def before_submit(self):
-        # Crucial: Clean references again right before the submit cascade begins
         self.clean_standalone_references()
 
     def check_sales_return_reference(self):
         if self.is_standalone_zero_return:
             for item in self.get("items"):
                 if flt(item.rate) > 0 or flt(item.incoming_rate) > 0:
-                    frappe.throw(f"Standalone returns are only allowed for zero-valued crates. Item {item.item_code} has a value.")
+                    frappe.throw(f"Standalone returns only allowed for zero-valued crates. Item {item.item_code} has a value.")
             return 
         super().check_sales_return_reference()
 
@@ -40,14 +42,9 @@ class CustomDeliveryNote(DeliveryNote):
         if hasattr(super(), 'validate_return_against'):
             super().validate_return_against()
 
-    # --------------------------------------------------------
-    # INTERCEPTING THE SUBMIT CASCADE
-    # --------------------------------------------------------
-
     def get_return_against_doc(self):
-        # Intercepts StockController attempting to fetch the parent doc
         if self.is_standalone_zero_return:
-            # Return a safe, dummy dictionary so caller functions don't crash
+            # Return a dummy dictionary to prevent downstream core functions from crashing
             return frappe._dict({
                 "doctype": "Delivery Note",
                 "name": "Standalone Return",
@@ -56,7 +53,6 @@ class CustomDeliveryNote(DeliveryNote):
                 "company": self.company,
                 "conversion_rate": 1.0
             })
-            
         if hasattr(super(), 'get_return_against_doc'):
             return super().get_return_against_doc()
 
