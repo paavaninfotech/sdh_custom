@@ -5,7 +5,7 @@ from erpnext.stock.doctype.delivery_note.delivery_note import make_sales_invoice
 def enqueue_bulk_invoices(from_date, to_date, invoice_date):
     # Trigger the background job using the 'long' queue (default 1500s timeout)
     frappe.enqueue(
-        "your_app.api.process_bulk_invoices_job",
+        "sdh_custom.api.process_bulk_invoices_job",
         queue="long",
         timeout=3600, # Extended timeout for high-volume data
         from_date=from_date,
