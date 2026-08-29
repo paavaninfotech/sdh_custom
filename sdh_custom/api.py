@@ -75,7 +75,7 @@ def process_bulk_invoices_job(from_date, to_date, invoice_date, user):
 @frappe.whitelist()
 def enqueue_bulk_purchase_invoices(from_date, to_date, invoice_date):
     frappe.enqueue(
-        "your_app.api.process_bulk_pi_job",
+        "sdh_custom.api.process_bulk_pi_job",
         queue="long",
         timeout=3600,
         from_date=from_date,
