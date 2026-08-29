@@ -1,5 +1,6 @@
 import frappe
 from erpnext.stock.doctype.delivery_note.delivery_note import make_sales_invoice
+from erpnext.stock.doctype.purchase_receipt.purchase_receipt import make_purchase_invoice
 
 @frappe.whitelist()
 def enqueue_bulk_invoices(from_date, to_date, invoice_date):
@@ -70,3 +71,73 @@ def process_bulk_invoices_job(from_date, to_date, invoice_date, user):
     # Send completion notification to the user who triggered it
     final_message = f"Job completed: {success_count} invoices created, {error_count} failed."
     frappe.publish_realtime("bulk_invoice_update", final_message, user=user)
+
+@frappe.whitelist()
+def enqueue_bulk_purchase_invoices(from_date, to_date, invoice_date):
+    frappe.enqueue(
+        "sdh_custom.api.process_bulk_pi_job",
+        queue="long",
+        timeout=3600,
+        from_date=from_date,
+        to_date=to_date,
+        invoice_date=invoice_date,
+        user=frappe.session.user
+    )
+    return {"status": "queued", "message": "The bulk Purchase Invoice job has been added to the queue."}
+
+def process_bulk_pi_job(from_date, to_date, invoice_date, user):
+    frappe.db.auto_commit_on_many_writes = 1
+    
+    # 1. Fetch unbilled Purchase Receipts
+    receipts = frappe.db.get_all(
+        "Purchase Receipt",
+        filters={
+            "docstatus": 1,
+            "posting_date": ["between", [from_date, to_date]],
+            "per_billed": ["<", 100],
+            "status": ["not in", ["Closed", "Cancelled"]]
+        },
+        fields=["name", "supplier"],
+        order_by="posting_date asc"
+    )
+
+    if not receipts:
+        frappe.publish_realtime("bulk_pi_update", "No unbilled Purchase Receipts found.", user=user)
+        return
+
+    # 2. Group by Supplier
+    supplier_receipts = {}
+    for r in receipts:
+        supplier_receipts.setdefault(r.supplier, []).append(r.name)
+
+    success_count = 0
+    error_count = 0
+
+    # 3. Process and consolidate
+    for supplier, prs in supplier_receipts.items():
+        try:
+            pi = make_purchase_invoice(prs[0])
+            pi.posting_date = invoice_date
+            pi.set_posting_time = 1
+
+            if len(prs) > 1:
+                for pr_name in prs[1:]:
+                    mapped_doc = make_purchase_invoice(pr_name)
+                    for item in mapped_doc.get("items"):
+                        pi.append("items", item)
+
+            pi.set("taxes", [])
+            pi.set_missing_values()
+            pi.calculate_taxes_and_totals()
+            
+            pi.insert()
+            frappe.db.commit() 
+            success_count += 1
+
+        except Exception as e:
+            frappe.db.rollback()
+            frappe.log_error(title=f"Bulk PI Failed: {supplier}", message=frappe.get_traceback())
+            error_count += 1
+
+    final_message = f"Job completed: {success_count} Purchase Invoices created, {error_count} failed."
+    frappe.publish_realtime("bulk_pi_update", final_message, user=user)
