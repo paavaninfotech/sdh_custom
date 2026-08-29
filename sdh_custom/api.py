@@ -75,7 +75,7 @@ def process_bulk_invoices_job(from_date, to_date, invoice_date, user):
 @frappe.whitelist()
 def enqueue_bulk_purchase_invoices(from_date, to_date, invoice_date):
     frappe.enqueue(
-        "sdh_custom.api.process_bulk_pi_job",
+        "your_app.api.process_bulk_pi_job",
         queue="long",
         timeout=3600,
         from_date=from_date,
@@ -88,7 +88,7 @@ def enqueue_bulk_purchase_invoices(from_date, to_date, invoice_date):
 def process_bulk_pi_job(from_date, to_date, invoice_date, user):
     frappe.db.auto_commit_on_many_writes = 1
     
-    # 1. Fetch unbilled Purchase Receipts
+    # 1. Fetch unbilled Purchase Receipts, including the is_return flag
     receipts = frappe.db.get_all(
         "Purchase Receipt",
         filters={
@@ -97,7 +97,7 @@ def process_bulk_pi_job(from_date, to_date, invoice_date, user):
             "per_billed": ["<", 100],
             "status": ["not in", ["Closed", "Cancelled"]]
         },
-        fields=["name", "supplier"],
+        fields=["name", "supplier", "is_return"],
         order_by="posting_date asc"
     )
 
@@ -105,39 +105,64 @@ def process_bulk_pi_job(from_date, to_date, invoice_date, user):
         frappe.publish_realtime("bulk_pi_update", "No unbilled Purchase Receipts found.", user=user)
         return
 
-    # 2. Group by Supplier
-    supplier_receipts = {}
+    # 2. Group by Supplier and split by normal vs. return
+    supplier_normals = {}
+    supplier_returns = {}
+    
     for r in receipts:
-        supplier_receipts.setdefault(r.supplier, []).append(r.name)
+        if r.is_return:
+            supplier_returns.setdefault(r.supplier, []).append(r.name)
+        else:
+            supplier_normals.setdefault(r.supplier, []).append(r.name)
 
     success_count = 0
     error_count = 0
 
-    # 3. Process and consolidate
-    for supplier, prs in supplier_receipts.items():
-        try:
-            pi = make_purchase_invoice(prs[0])
-            pi.posting_date = invoice_date
-            pi.set_posting_time = 1
+    # 3. Helper function to generate invoices to avoid repeating code
+    def create_invoices(supplier_dict, is_return_batch):
+        nonlocal success_count, error_count
+        
+        # Set the format for Supplier Invoice No
+        suffix = "Return" if is_return_batch else "Inv"
+        supplier_invoice_no = f"{invoice_date}-{suffix}"
 
-            if len(prs) > 1:
-                for pr_name in prs[1:]:
-                    mapped_doc = make_purchase_invoice(pr_name)
-                    for item in mapped_doc.get("items"):
-                        pi.append("items", item)
+        for supplier, prs in supplier_dict.items():
+            try:
+                # Initialize SI mapping with the first Purchase Receipt
+                pi = make_purchase_invoice(prs[0])
+                pi.posting_date = invoice_date
+                pi.set_posting_time = 1
+                
+                # Apply mandatory supplier invoice fields
+                pi.bill_no = supplier_invoice_no
+                pi.bill_date = invoice_date
 
-            pi.set("taxes", [])
-            pi.set_missing_values()
-            pi.calculate_taxes_and_totals()
-            
-            pi.insert()
-            frappe.db.commit() 
-            success_count += 1
+                # Map and append the remaining items
+                if len(prs) > 1:
+                    for pr_name in prs[1:]:
+                        mapped_doc = make_purchase_invoice(pr_name)
+                        for item in mapped_doc.get("items"):
+                            pi.append("items", item)
 
-        except Exception as e:
-            frappe.db.rollback()
-            frappe.log_error(title=f"Bulk PI Failed: {supplier}", message=frappe.get_traceback())
-            error_count += 1
+                pi.set("taxes", [])
+                pi.set_missing_values()
+                pi.calculate_taxes_and_totals()
+                
+                pi.insert()
+                frappe.db.commit() 
+                success_count += 1
+
+            except Exception as e:
+                frappe.db.rollback()
+                frappe.log_error(title=f"Bulk PI Failed: {supplier} (Return: {is_return_batch})", message=frappe.get_traceback())
+                error_count += 1
+
+    # 4. Execute standard receipts first, then returns
+    if supplier_normals:
+        create_invoices(supplier_normals, is_return_batch=0)
+        
+    if supplier_returns:
+        create_invoices(supplier_returns, is_return_batch=1)
 
     final_message = f"Job completed: {success_count} Purchase Invoices created, {error_count} failed."
     frappe.publish_realtime("bulk_pi_update", final_message, user=user)
